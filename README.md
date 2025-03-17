@@ -40,51 +40,77 @@
 
 1. 개발환경 세팅
 운영체제: Windows 11
-패키지 관리자:
 Node.js (npm 포함) (스마트 컨트랙트 및 프론트엔드 개발)
-pnpm (선택 사항, npm보다 빠른 패키지 관리)
-Yarn (선택 사항)
 에디터 및 IDE:
 Visual Studio Code + Solidity, React 확장 플러그인
-Hardhat 또는 Foundry (스마트 컨트랙트 개발 및 테스트)
+
+
+Foundry (스마트 컨트랙트 개발 및 테스트)
+
+
 버전 관리: Git 및 GitHub
-테스트넷 및 블록체인 상호작용:
-MetaMask (BNB 체인 테스트 및 트랜잭션 확인)
-BNB Smart Chain Testnet
+
+
+테스트넷 및 블록체인 상호작용: MetaMask (BNB 체인 테스트 및 트랜잭션 확인) BNB Smart Chain Testnet
+
+
 2. 개발 언어 및 스택
-① 프론트엔드 (웹 개발)
+
+
+① 프론트엔드 (웹 개발) 
+
+
 프레임워크: Next.js (React 기반, 서버사이드 렌더링 지원)
+
+
 UI 라이브러리: Tailwind CSS + shadcn/ui
-지갑 연동: wagmi, ethers.js
-상태 관리: React Context API 또는 Zustand
-API 호출: Axios, React Query
+
+
+지갑 연동: ethers.js
+
+
 ② 백엔드
+
+
 서버 개발: Node.js + Express (필요 시 API 서버)
-데이터베이스: Firebase, Supabase 또는 PostgreSQL (트랜잭션 및 유저 정보 저장)
+
+
+데이터베이스: Firebase, 
+
+
 캐싱: Redis (트랜잭션 처리 속도 향상)
+
+
 파일 저장소: IPFS (NFT 또는 토큰 관련 이미지 저장 시)
+
+
 ③ 블록체인 스마트 컨트랙트
+
+
 언어: Solidity (BEP-20 토큰, 유동성 풀 자동 생성)
+
+
 개발 프레임워크: Hardhat 또는 Foundry
+
+
 테스트넷: BNB Smart Chain Testnet (Sepolia와 유사)
+
+
 라이브러리: OpenZeppelin (ERC/BEP 표준 구현)
-배포 도구: Hardhat, Ethers.js, BSCScan API
+
+
 ④ 배포 및 운영
-도메인 및 SSL: Cafe24 또는 Namecheap
-웹 호스팅: Vercel (Next.js 지원, 무료 SSL 제공)
-스마트 컨트랙트 배포: Hardhat + BSCScan API
+도메인 및 SSL: Cafe24 
+
+
+웹 호스팅: cafe24 
+
+
 모니터링: The Graph (블록체인 데이터 인덱싱)
+
+
 3. 추가 고려 사항
-토큰 생성 기능
-사용자가 BEP-20 토큰을 생성하고 커스텀 설정을 할 수 있도록 스마트 컨트랙트 구현
-자동 유동성 공급
-PancakeSwap V2/V3 Router 컨트랙트와 연동
-DApp 거래 기능
-사용자가 생성한 토큰을 BNB.FUN에서 거래 가능하도록 UI/UX 구현
-트랜잭션 추적
-BSCScan API 활용
 
 
-✅ 토큰 생성 → 유동성 추가 → 거래까지 UI 흐름 정리
-✅ 테스트넷 배포 및 기능 검증
+
 
