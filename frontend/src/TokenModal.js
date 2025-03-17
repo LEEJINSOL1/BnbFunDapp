@@ -6,7 +6,7 @@ const TokenModal = ({ web3, account, closeModal }) => {
   const [ticker, setTicker] = useState('');
   const [description, setDescription] = useState('');
   const [image, setImage] = useState(null);
-  const [loading, setLoading] = useState(false); // 추가: 로딩 상태 정의
+  const [loading, setLoading] = useState(false);
 
   // MyToken ABI와 바이트코드 (Hardhat에서 가져옴)
   const tokenABI = [
@@ -275,6 +275,7 @@ const TokenModal = ({ web3, account, closeModal }) => {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    setLoading(true);
 
     try {
       // 1. 새 토큰 배포
@@ -290,24 +291,36 @@ const TokenModal = ({ web3, account, closeModal }) => {
       const tokenAddress = deployedToken.options.address;
       console.log("New token deployed at:", tokenAddress);
 
-      // 2. 토큰 승인 (문자열로 전달)
-      const tokenAmount = web3.utils.toWei('100000000', 'ether'); // 문자열로 유지
+      // 2. 백엔드에 토큰 정보 저장
+      await fetch('http://localhost:5000/tokens', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          address: tokenAddress,
+          name,
+          ticker,
+          creator: account,
+        }),
+      });
+
+      // 3. 토큰 승인
+      const tokenAmount = web3.utils.toWei('100000000', 'ether');
       await deployedToken.methods.approve(routerAddress, tokenAmount)
         .send({ from: account });
 
-      // 3. 유동성 풀 추가 (deadline을 문자열로 변환)
-      const deadline = (Math.floor(Date.now() / 1000) + 60 * 10).toString(); // Number -> 문자열
+      // 4. 유동성 풀 추가
+      const deadline = (Math.floor(Date.now() / 1000) + 60 * 10).toString();
       const routerContract = new web3.eth.Contract(routerABI, routerAddress);
       await routerContract.methods.addLiquidityETH(
         tokenAddress,
-        tokenAmount, // 문자열로 전달
-        '0',         // 최소 토큰 (문자열)
-        '0',         // 최소 ETH (문자열)
+        tokenAmount,
+        '0',
+        '0',
         account,
-        deadline     // 문자열로 전달
+        deadline
       ).send({
         from: account,
-        value: web3.utils.toWei('0.05', 'ether'), // 문자열로 유지
+        value: web3.utils.toWei('0.05', 'ether'),
       });
 
       alert('토큰이 발행되고 유동성 풀이 추가되었습니다!\n토큰 주소: ' + tokenAddress);
@@ -324,29 +337,54 @@ const TokenModal = ({ web3, account, closeModal }) => {
     <div style={modalStyle}>
       <div style={modalContentStyle}>
         <span onClick={closeModal} style={closeStyle}>×</span>
-        <h2>새 토큰 생성</h2>
-        <form onSubmit={handleSubmit}>
-          <label>
+        <h2 style={titleStyle}>새 토큰 생성</h2>
+        <form onSubmit={handleSubmit} style={formStyle}>
+          <label style={labelStyle}>
             Name:
-            <input type="text" value={name} onChange={(e) => setName(e.target.value)} required />
+            <input
+              type="text"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              required
+              disabled={loading}
+              style={inputStyle}
+            />
           </label>
-          <br />
-          <label>
+          <label style={labelStyle}>
             Ticker:
-            <input type="text" value={ticker} onChange={(e) => setTicker(e.target.value)} required />
+            <input
+              type="text"
+              value={ticker}
+              onChange={(e) => setTicker(e.target.value)}
+              required
+              disabled={loading}
+              style={inputStyle}
+            />
           </label>
-          <br />
-          <label>
+          <label style={labelStyle}>
             Description:
-            <textarea value={description} onChange={(e) => setDescription(e.target.value)} required />
+            <textarea
+              value={description}
+              onChange={(e) => setDescription(e.target.value)}
+              required
+              disabled={loading}
+              style={textareaStyle}
+            />
           </label>
-          <br />
-          <label>
+          <label style={labelStyle}>
             Image Upload:
-            <input type="file" onChange={(e) => setImage(e.target.files[0])} accept="image/*" required />
+            <input
+              type="file"
+              onChange={(e) => setImage(e.target.files[0])}
+              accept="image/*"
+              required
+              disabled={loading}
+              style={inputStyle}
+            />
           </label>
-          <br />
-          <button type="submit">Create Coin</button>
+          <button type="submit" disabled={loading} style={buttonStyle}>
+            {loading ? '처리 중...' : 'Create Coin'}
+          </button>
         </form>
       </div>
     </div>
@@ -359,22 +397,104 @@ const modalStyle = {
   left: 0,
   width: '100%',
   height: '100%',
-  backgroundColor: 'rgba(0,0,0,0.5)',
+  backgroundColor: 'rgba(0, 0, 0, 0.6)', // 오버레이를 조금 더 어둡게
   display: 'flex',
   justifyContent: 'center',
   alignItems: 'center',
+  zIndex: 1000,
 };
+
 const modalContentStyle = {
-  backgroundColor: 'white',
-  padding: '20px',
-  borderRadius: '5px',
-  width: '50%',
+  background: 'linear-gradient(135deg, #e0f7fa 0%, #ffffff 100%)', // 그라데이션 배경
+  padding: '30px',
+  borderRadius: '15px',
+  width: '400px',
+  boxShadow: '0 8px 16px rgba(0, 0, 0, 0.2)', // 그림자 효과
+  position: 'relative',
+  color: '#333', // 기본 텍스트 색상
 };
+
 const closeStyle = {
-  color: '#aaa',
-  float: 'right',
-  fontSize: '28px',
+  position: 'absolute',
+  top: '10px',
+  right: '15px',
+  fontSize: '24px',
+  color: '#ff4d4d', // 닫기 버튼은 빨간색
   cursor: 'pointer',
 };
 
+const titleStyle = {
+  color: '#0056b3', // 제목은 파란색
+  textAlign: 'center',
+  marginBottom: '20px',
+  fontSize: '24px',
+  fontWeight: 'bold',
+};
+
+const formStyle = {
+  display: 'flex',
+  flexDirection: 'column',
+  gap: '15px',
+};
+
+const labelStyle = {
+  color: '#0056b3', // 라벨은 파란색
+  fontSize: '16px',
+  fontWeight: '500',
+};
+
+const inputStyle = {
+  width: '100%',
+  padding: '10px',
+  marginTop: '5px',
+  border: '1px solid #ccc',
+  borderRadius: '5px',
+  fontSize: '14px',
+  backgroundColor: '#f9f9f9',
+  transition: 'border-color 0.3s',
+};
+
+const textareaStyle = {
+  width: '100%',
+  height: '80px',
+  padding: '10px',
+  marginTop: '5px',
+  border: '1px solid #ccc',
+  borderRadius: '5px',
+  fontSize: '14px',
+  backgroundColor: '#f9f9f9',
+  resize: 'none',
+  transition: 'border-color 0.3s',
+};
+
+const buttonStyle = {
+  padding: '12px',
+  background: 'linear-gradient(135deg, #007bff 0%, #0056b3 100%)', // 버튼 그라데이션
+  color: '#ffffff',
+  border: 'none',
+  borderRadius: '5px',
+  cursor: 'pointer',
+  fontSize: '16px',
+  fontWeight: 'bold',
+  transition: 'background 0.3s',
+};
+
 export default TokenModal;
+
+// CSS 동적 스타일링 (포커스 효과 추가)
+const styleSheet = document.createElement('style');
+styleSheet.innerText = `
+  input:focus, textarea:focus {
+    border-color: #007bff;
+    outline: none;
+    box-shadow: 0 0 5px rgba(0, 123, 255, 0.3);
+  }
+  button:hover:not(:disabled) {
+    background: linear-gradient(135deg, #0056b3 0%, #003d82 100%);
+  }
+  button:disabled {
+    background: #cccccc;
+    cursor: not-allowed;
+  }
+`;
+document.head.appendChild(styleSheet);
