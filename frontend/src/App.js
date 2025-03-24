@@ -1,129 +1,121 @@
-import React, { useState, useEffect } from 'react';
-import Web3 from 'web3';
-import MetaMaskOnboarding from '@metamask/onboarding';
-import TokenModal from './TokenModal';
-import './App.css';
+import React, { useState, useEffect } from "react";
+import { BrowserRouter as Router, Routes, Route } from "react-router-dom";
+
+import { ethers } from "ethers";
+import TokenList from "./components/TokenList";
+import CreateTokenModal from "./components/CreateTokenModal";
+import PresalePage from "./components/PresalePage";
+import "./App.css";
 
 function App() {
-  const [web3, setWeb3] = useState(null);
-  const [account, setAccount] = useState(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
-  const [selectedToken, setSelectedToken] = useState(null);
   const [tokens, setTokens] = useState([]);
-  const [transactions, setTransactions] = useState([]);
+  const [walletAddress, setWalletAddress] = useState("");
+  const [signer, setSigner] = useState(null);
 
-  const onboarding = new MetaMaskOnboarding();
-
-  useEffect(() => {
-    // 토큰 리스트 가져오기
-    fetch('http://localhost:5000/tokens')
-      .then(res => res.json())
-      .then(data => setTokens(data))
-      .catch(err => console.error(err));
-  }, []);
-
-  const connectMetaMask = async () => {
-    if (MetaMaskOnboarding.isMetaMaskInstalled()) {
+  // 지갑 연결 함수
+  const connectWallet = async () => {
+    if (window.ethereum) {
       try {
-        const accounts = await window.ethereum.request({ method: 'eth_requestAccounts' });
-        setAccount(accounts[0]);
-        const web3Instance = new Web3(window.ethereum);
-        setWeb3(web3Instance);
-        await window.ethereum.request({
-          method: 'wallet_switchEthereumChain',
-          params: [{ chainId: '0x61' }], // BNB 테스트넷
-        });
-        alert('MetaMask가 BNB 테스트넷에 연결되었습니다!');
+        const provider = new ethers.BrowserProvider(window.ethereum);
+        await provider.send("eth_requestAccounts", []); // 메타마스크 연결 요청
+        const signer = await provider.getSigner();
+        const address = await signer.getAddress();
+        setSigner(signer);
+        setWalletAddress(address);
       } catch (error) {
-        console.error(error);
-        alert('MetaMask 연결 실패: ' + error.message);
+        console.error("Wallet connection failed:", error);
       }
     } else {
-      onboarding.startOnboarding();
+      alert("Please install MetaMask!");
     }
   };
 
-  const openModal = () => {
-    if (!web3) {
-      alert('먼저 MetaMask를 연결해주세요.');
-      return;
-    }
-    setIsModalOpen(true);
-  };
+  // 페이지 로드 시 지갑 연결 상태 확인
+  useEffect(() => {
+    if (window.ethereum) {
+      const provider = new ethers.BrowserProvider(window.ethereum);
+      provider.listAccounts().then((accounts) => {
+        if (accounts.length > 0) {
+          connectWallet();
+        }
+      });
 
-  const selectToken = (token) => {
-    setSelectedToken(token);
-    // 트랜잭션 내역 가져오기
-    fetch(`http://localhost:5000/tokens/transactions/${token.address}`)
-      .then(res => res.json())
-      .then(data => setTransactions(data))
-      .catch(err => console.error(err));
+      // 계정 변경 감지
+      window.ethereum.on("accountsChanged", (accounts) => {
+        if (accounts.length > 0) {
+          connectWallet();
+        } else {
+          setWalletAddress("");
+          setSigner(null);
+        }
+      });
+    }
+  }, []);
+
+  const addToken = (token) => {
+    setTokens([...tokens, token]);
   };
 
   return (
-    <div className="app">
-      <header className="header">
-        <img src="/logo.png" alt="Logo" className="logo" />
-        <select className="network-select">
-          <option value="0x61">BNB Testnet</option>
-        </select>
-        <button onClick={connectMetaMask} className="connect-button">
-          {account ? `Connected: ${account.slice(0, 6)}...${account.slice(-4)}` : 'Connect Wallet'}
-        </button>
-      </header>
-      <div className="main-content">
-        <div className="chart-section">
-          <h2>{selectedToken ? `${selectedToken.name} Chart` : 'Select a Token'}</h2>
-          <div className="chart-placeholder">
-            {selectedToken ? (
-              <div>차트 데이터 (예: TradingView 임베드 또는 더미)</div>
-            ) : (
-              <p>토큰을 선택해 주세요.</p>
-            )}
-          </div>
-        </div>
-        <div className="trade-section">
-          <h2>Trade</h2>
-          <div className="trade-ui">
-            <input type="number" placeholder="Amount" />
-            <button onClick={() => alert('Buy implemented')}>Buy</button>
-            <button onClick={() => alert('Sell implemented')}>Sell</button>
-          </div>
-        </div>
-        <div className="transaction-section">
-          <h2>Transactions</h2>
-          <ul className="transaction-list">
-            {transactions.length > 0 ? (
-              transactions.map(tx => (
-                <li key={tx.txHash}>{`${tx.type}: ${tx.amount} from ${tx.from} to ${tx.to}`}</li>
-              ))
-            ) : (
-              <li>No transactions</li>
-            )}
-          </ul>
-        </div>
-        <div className="token-list">
-          <h2>Token List</h2>
-          <ul>
-            {tokens.map((token) => (
-              <li key={token.address} onClick={() => selectToken(token)}>
-                {token.name} ({token.ticker})
-              </li>
-            ))}
-          </ul>
-          {account ? (
-            <button onClick={openModal}>Create New Token</button>
-          ) : (
-            <button onClick={connectMetaMask}>Connect Wallet</button>
-          )}
-        </div>
+    <Router>
+      <div className="min-h-screen bg-gray-900 text-white font-sans">
+        {/* 헤더 */}
+        <header className="p-4 flex justify-between items-center border-b border-gray-700 bg-gray-800">
+          <h1 className="text-2xl font-bold tracking-tight">BNB.Fun</h1>
+          <nav>
+            <button
+              onClick={connectWallet}
+              className="bg-blue-600 px-4 py-2 rounded-lg hover:bg-blue-500 transition-colors duration-200"
+            >
+              {walletAddress
+                ? `${walletAddress.slice(0, 6)}...${walletAddress.slice(-4)}`
+                : "Connect Wallet"}
+            </button>
+          </nav>
+        </header>
+
+        {/* 메인 콘텐츠 */}
+        <Routes>
+          <Route
+            path="/"
+            element={
+              <main className="p-6 max-w-7xl mx-auto">
+                <div className="flex justify-center mb-8">
+                  <button
+                    onClick={() => setIsModalOpen(true)}
+                    className="bg-green-600 px-6 py-3 rounded-lg text-lg font-medium hover:bg-green-500 transition-colors duration-200 shadow-md"
+                    disabled={!walletAddress}
+                  >
+                    Create Token
+                  </button>
+                </div>
+                <TokenList tokens={tokens} />
+              </main>
+            }
+          />
+          <Route
+            path="/presale/:tokenId"
+            element={<PresalePage tokens={tokens} />}
+          />
+        </Routes>
+
+        {/* 모달 */}
+        {isModalOpen && (
+          <CreateTokenModal
+            onClose={() => setIsModalOpen(false)}
+            onCreate={addToken}
+            signer={signer}
+          />
+        )}
+
+        {/* 푸터 */}
+        <footer className="p-4 text-center border-t border-gray-700 bg-gray-800">
+          <p className="text-sm text-gray-400">© 2025 BNB.Fun. All rights reserved.</p>
+        </footer>
       </div>
-      <footer className="footer">
-        <p>© 2025 BnbFun Project</p>
-      </footer>
-      {isModalOpen && <TokenModal web3={web3} account={account} closeModal={() => setIsModalOpen(false)} />}
-    </div>
+    </Router>
   );
 }
 
-export default App;
+export default App; 

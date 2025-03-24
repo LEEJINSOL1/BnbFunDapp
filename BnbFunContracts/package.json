@@ -1,5 +1,5 @@
 {
-  "name": "token-creator-hardhat",
+  "name": "bnbfuncontracts",
   "version": "1.0.0",
   "description": "",
   "main": "index.js",
@@ -15,7 +15,7 @@
     "hardhat": "^2.22.19"
   },
   "dependencies": {
-    "dotenv": "^16.4.7",
-    "ethers": "^6.13.5"
+    "@openzeppelin/contracts": "^5.2.0",
+    "dotenv": "^16.4.7"
   }
 }

@@ -1,6 +1,6 @@
 import React from 'react';
 import ReactDOM from 'react-dom/client';
-import './index.css';
+import "./index.css"; // 이 줄이 있어야 Tailwind 스타일 적용됨
 import App from './App';
 import reportWebVitals from './reportWebVitals';
 
