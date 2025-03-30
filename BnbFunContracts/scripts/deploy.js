@@ -5,8 +5,8 @@ async function main() {
   console.log("Deploying contracts with the account:", deployer.address);
 
   // 테스트용 토큰 배포 (CustomToken 사용)
-  const CustomToken = await hre.ethers.getContractFactory("CustomToken");
-  const testToken = await CustomToken.deploy("Test Token", "TST", ethers.parseEther("100000000")); // 1억 토큰
+  const CustomToken = await hre.ethers.getContractFactory("contracts/TokenFactory.sol:CustomToken");
+  const testToken = await CustomToken.deploy("Test Token", "TST", hre.ethers.parseEther("100000000")); // 1억 토큰
   await testToken.waitForDeployment();
   const testTokenAddress = await testToken.getAddress();
   console.log("Test Token deployed to:", testTokenAddress);
@@ -28,4 +28,4 @@ async function main() {
 main().catch((error) => {
   console.error(error);
   process.exitCode = 1;
-}); 
+});
