@@ -4,25 +4,30 @@ async function main() {
   const [deployer] = await hre.ethers.getSigners();
   console.log("Deploying contracts with the account:", deployer.address);
 
-  // 테스트용 토큰 배포 (CustomToken 사용)
-  const CustomToken = await hre.ethers.getContractFactory("contracts/TokenFactory.sol:CustomToken");
-  const testToken = await CustomToken.deploy("Test Token", "TST", hre.ethers.parseEther("100000000")); // 1억 토큰
-  await testToken.waitForDeployment();
-  const testTokenAddress = await testToken.getAddress();
-  console.log("Test Token deployed to:", testTokenAddress);
+  // 계정 잔액 확인
+  const balance = await hre.ethers.provider.getBalance(deployer.address);
+  console.log("Account balance:", hre.ethers.formatEther(balance), "BNB");
 
-  // Presale 컨트랙트 배포
-  const Presale = await hre.ethers.getContractFactory("Presale");
-  const presale = await Presale.deploy(testTokenAddress); // 테스트 토큰 주소 전달
-  await presale.waitForDeployment();
-  const presaleAddress = await presale.getAddress();
-  console.log("Presale deployed to:", presaleAddress);
-
-  // TokenFactory 컨트랙트 배포
   const TokenFactory = await hre.ethers.getContractFactory("TokenFactory");
-  const tokenFactory = await TokenFactory.deploy(presaleAddress);
+  const tokenFactory = await TokenFactory.deploy();
   await tokenFactory.waitForDeployment();
-  console.log("TokenFactory deployed to:", await tokenFactory.getAddress());
+  const tokenFactoryAddress = await tokenFactory.getAddress();
+  console.log("TokenFactory deployed to:", tokenFactoryAddress);
+
+  const tx = await tokenFactory.createToken("Test Token", "TST", {
+    value: hre.ethers.parseEther("0.01"),
+    gasLimit: 3000000, // 가스 한도 증가
+  });
+  const receipt = await tx.wait();
+
+  const event = receipt.logs.find((log) => log.topics[0] === hre.ethers.id("TokenCreated(address,address)"));
+  const [tokenAddress, presaleAddress] = hre.ethers.AbiCoder.defaultAbiCoder().decode(
+    ["address", "address"],
+    event.data
+  );
+
+  console.log("Test Token deployed to:", tokenAddress);
+  console.log("Presale deployed to:", presaleAddress);
 }
 
 main().catch((error) => {

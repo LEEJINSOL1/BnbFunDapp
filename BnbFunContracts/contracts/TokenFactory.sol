@@ -1,40 +1,36 @@
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.8.0;
+pragma solidity ^0.8.20;
 
-import "@openzeppelin/contracts/token/ERC20/ERC20.sol";
-import "@openzeppelin/contracts/access/Ownable.sol";
+import "./customToken.sol";
+import "./Presale.sol";
 
 contract TokenFactory is Ownable {
     uint256 public constant CREATE_FEE = 0.01 ether;
-    address public presaleContract;
 
-    event TokenCreated(address tokenAddress, string name, string symbol);
+    event TokenCreated(address tokenAddress, address presaleAddress);
 
-    constructor(address _presaleContract) Ownable(msg.sender) {
-        require(_presaleContract != address(0), "Presale contract address cannot be zero");
-        presaleContract = _presaleContract;
-    }
+    constructor() Ownable(msg.sender) {}
 
-    function createToken(string memory name, string memory symbol) external payable {
-        require(msg.value == CREATE_FEE, "Must send 0.01 BNB to create token");
-        require(bytes(name).length > 0, "Token name cannot be empty");
-        require(bytes(symbol).length > 0, "Token symbol cannot be empty");
+    function createToken(string memory name, string memory symbol) external payable returns (address, address) {
+        require(msg.value == CREATE_FEE, "Must send exactly 0.01 BNB");
 
-        CustomToken newToken = new CustomToken(name, symbol, 100_000_000 * 10**18);
-        require(newToken.transfer(presaleContract, 100_000_000 * 10**18), "Token transfer failed");
+        // Presale 먼저 생성
+        Presale newPresale = new Presale(IERC20(address(0)));
+        address presaleAddress = address(newPresale);
 
-        emit TokenCreated(address(newToken), name, symbol);
+        // CustomToken 생성 및 Presale로 토큰 전송
+        CustomToken newToken = new CustomToken(name, symbol, presaleAddress);
+        address tokenAddress = address(newToken);
+
+        // Presale에 토큰 설정 및 소유권 이전
+        newPresale.updateToken(IERC20(tokenAddress));
+        newPresale.transferOwnership(msg.sender);
+
+        emit TokenCreated(tokenAddress, presaleAddress);
+        return (tokenAddress, presaleAddress);
     }
 
     function withdraw() external onlyOwner {
         payable(owner()).transfer(address(this).balance);
-    }
-}
-
-contract CustomToken is ERC20 {
-    constructor(string memory name, string memory symbol, uint256 initialSupply) 
-        ERC20(name, symbol) 
-    {
-        _mint(msg.sender, initialSupply);
     }
 }

@@ -1,6 +1,5 @@
 import React, { useState, useEffect } from "react";
 import { BrowserRouter as Router, Routes, Route } from "react-router-dom";
-
 import { ethers } from "ethers";
 import TokenList from "./components/TokenList";
 import CreateTokenModal from "./components/CreateTokenModal";
@@ -13,60 +12,58 @@ function App() {
   const [walletAddress, setWalletAddress] = useState("");
   const [signer, setSigner] = useState(null);
 
-  // 지갑 연결 함수
   const connectWallet = async () => {
-    if (window.ethereum) {
-      try {
-        const provider = new ethers.BrowserProvider(window.ethereum);
-        await provider.send("eth_requestAccounts", []); // 메타마스크 연결 요청
-        const signer = await provider.getSigner();
-        const address = await signer.getAddress();
-        setSigner(signer);
-        setWalletAddress(address);
-      } catch (error) {
-        console.error("Wallet connection failed:", error);
-      }
-    } else {
-      alert("Please install MetaMask!");
+    if (!window.ethereum) return alert("Please install MetaMask!");
+    try {
+      const provider = new ethers.BrowserProvider(window.ethereum);
+      await provider.send("eth_requestAccounts", []);
+      const signer = await provider.getSigner();
+      const address = await signer.getAddress();
+      setSigner(signer);
+      setWalletAddress(address);
+    } catch (error) {
+      console.error("Wallet connection failed:", error);
     }
   };
 
-  // 페이지 로드 시 지갑 연결 상태 확인
+  const addToken = (token) => {
+    const newTokens = [...tokens, token];
+    setTokens(newTokens);
+    localStorage.setItem("tokens", JSON.stringify(newTokens)); // 로컬 스토리지 저장
+    console.log("Added token:", token);
+    console.log("Updated tokens:", newTokens);
+  };
+
   useEffect(() => {
+    const storedTokens = localStorage.getItem("tokens");
+    if (storedTokens) {
+      setTokens(JSON.parse(storedTokens)); // 초기 상태 복원
+    }
     if (window.ethereum) {
       const provider = new ethers.BrowserProvider(window.ethereum);
       provider.listAccounts().then((accounts) => {
-        if (accounts.length > 0) {
-          connectWallet();
-        }
+        if (accounts.length > 0) connectWallet();
       });
-
-      // 계정 변경 감지
       window.ethereum.on("accountsChanged", (accounts) => {
-        if (accounts.length > 0) {
-          connectWallet();
-        } else {
+        if (accounts.length > 0) connectWallet();
+        else {
           setWalletAddress("");
           setSigner(null);
+          setTokens(JSON.parse(localStorage.getItem("tokens") || "[]"));
         }
       });
     }
   }, []);
 
-  const addToken = (token) => {
-    setTokens([...tokens, token]);
-  };
-
   return (
     <Router>
       <div className="min-h-screen bg-gray-900 text-white font-sans">
-        {/* 헤더 */}
         <header className="p-4 flex justify-between items-center border-b border-gray-700 bg-gray-800">
           <h1 className="text-2xl font-bold tracking-tight">BNB.Fun</h1>
           <nav>
             <button
               onClick={connectWallet}
-              className="bg-blue-600 px-4 py-2 rounded-lg hover:bg-blue-500 transition-colors duration-200"
+              className="bg-blue-600 px-4 py-2 rounded-lg hover:bg-blue-500 transition-colors duration-200 mr-2"
             >
               {walletAddress
                 ? `${walletAddress.slice(0, 6)}...${walletAddress.slice(-4)}`
@@ -74,8 +71,6 @@ function App() {
             </button>
           </nav>
         </header>
-
-        {/* 메인 콘텐츠 */}
         <Routes>
           <Route
             path="/"
@@ -94,22 +89,12 @@ function App() {
               </main>
             }
           />
-          <Route
-            path="/presale/:tokenId"
-            element={<PresalePage tokens={tokens} />}
-          />
+          <Route path="/presale/:tokenAddress" element={<PresalePage signer={signer} tokens={tokens} />} />
         </Routes>
-
-        {/* 모달 */}
+        {console.log("Tokens passed to PresalePage:", tokens)}
         {isModalOpen && (
-          <CreateTokenModal
-            onClose={() => setIsModalOpen(false)}
-            onCreate={addToken}
-            signer={signer}
-          />
+          <CreateTokenModal onClose={() => setIsModalOpen(false)} onCreate={addToken} signer={signer} />
         )}
-
-        {/* 푸터 */}
         <footer className="p-4 text-center border-t border-gray-700 bg-gray-800">
           <p className="text-sm text-gray-400">© 2025 BNB.Fun. All rights reserved.</p>
         </footer>
@@ -118,4 +103,4 @@ function App() {
   );
 }
 
-export default App; 
+export default App;
