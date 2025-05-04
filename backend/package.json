@@ -1,25 +1,19 @@
 {
   "name": "backend",
   "version": "1.0.0",
-  "description": "",
   "main": "index.js",
   "scripts": {
-    "start": "node src/server.js",
-    "dev": "nodemon src/server.js"
+    "test": "echo \"Error: no test specified\" && exit 1"
   },
   "keywords": [],
   "author": "",
   "license": "ISC",
-  "type": "commonjs",
+  "description": "",
   "dependencies": {
     "cors": "^2.8.5",
-    "dotenv": "^16.4.7",
-    "express": "^4.21.2",
-    "mysql2": "^3.13.0",
-    "sequelize": "^6.37.6",
-    "web3": "^4.16.0"
-  },
-  "devDependencies": {
-    "nodemon": "^3.1.9"
+    "dotenv": "^16.5.0",
+    "ethers": "^5.7.2",
+    "express": "^5.1.0",
+    "mysql2": "^3.14.1"
   }
 }
