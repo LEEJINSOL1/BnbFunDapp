@@ -2,75 +2,94 @@ import React, { useEffect, useState } from "react";
 import { Line } from "react-chartjs-2";
 import { ethers } from "ethers";
 import PresaleABI from "../abis/Presale.json";
-import { Chart as ChartJS, LineElement, PointElement, LinearScale, TimeScale, Title, Tooltip, Legend } from "chart.js";
 import "chartjs-adapter-date-fns";
 
-ChartJS.register(LineElement, PointElement, LinearScale, TimeScale, Title, Tooltip, Legend);
-
-const PRESALE_ADDRESS = "0x874aa4Bf234e140876232D0BeaEd39F68F7C13Ec";
-const BSC_TESTNET_RPC = "https://data-seed-prebsc-1-s1.binance.org:8545/";
+import { Chart as ChartJS, CategoryScale, LinearScale, PointElement, LineElement, Title, Tooltip, Legend } from "chart.js";
+import axios from "axios";
+ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, Title, Tooltip, Legend);
 
 const FundingChart = ({ tokenAddress }) => {
-    const [chartData, setChartData] = useState({ labels: [], datasets: [] });
+    const [chartData, setChartData] = useState({
+        labels: [],
+        datasets: [],
+    });
 
     useEffect(() => {
-        const fetchFundingData = async () => {
+        const fetchChartData = async () => {
             try {
-                const provider = new ethers.providers.JsonRpcProvider(BSC_TESTNET_RPC);
-                const presale = new ethers.Contract(PRESALE_ADDRESS, PresaleABI, provider);
-                const latestBlock = await provider.getBlockNumber();
-                const fromBlock = Math.max(latestBlock - 10000, 0);
+                const response = await axios.get(`http://localhost:5000/api/transactions/${tokenAddress}`);
+                const transactions = response.data;
 
-                const filter = presale.filters.TokenBought(tokenAddress);
-                const events = await presale.queryFilter(filter, fromBlock, latestBlock);
+                // 시간별 데이터 집계
+                const labels = [];
+                const raisedFundsData = [];
+                const volumeData = [];
+                let currentRaisedFunds = 0;
+                let currentVolume = 0;
 
-                let cumulativeBnb = 0;
-                const dataPoints = events.map(event => {
-                    cumulativeBnb += parseFloat(ethers.utils.formatEther(event.args.bnbValue));
-                    return { x: new Date(event.blockTimestamp * 1000), y: cumulativeBnb };
-                });
+                // 최근 6개 시간 포인트 (5분 간격)
+                const now = new Date();
+                for (let i = 5; i >= 0; i--) {
+                    const time = new Date(now.getTime() - i * 5 * 60 * 1000);
+                    labels.push(time.toLocaleTimeString());
+
+                    // 해당 시간 이전의 트랜잭션 합계 계산
+                    const pastTransactions = transactions.filter(tx => new Date(tx.timestamp) <= time);
+                    currentRaisedFunds = pastTransactions
+                        .filter(tx => tx.type === 'buy')
+                        .reduce((sum, tx) => sum + parseFloat(tx.amount), 0);
+                    currentVolume = pastTransactions
+                        .filter(tx => tx.type === 'sell')
+                        .reduce((sum, tx) => sum + parseFloat(tx.amount), 0);
+
+                    raisedFundsData.push(currentRaisedFunds);
+                    volumeData.push(currentVolume);
+                }
 
                 setChartData({
-                    labels: dataPoints.map(dp => dp.x),
+                    labels,
                     datasets: [
                         {
                             label: "프리세일 모금액 (BNB)",
-                            data: dataPoints.map(dp => dp.y),
+                            data: raisedFundsData,
                             borderColor: "rgba(75, 192, 192, 1)",
-                            fill: false,
+                            backgroundColor: "rgba(75, 192, 192, 0.2)",
+                            fill: true,
+                        },
+                        {
+                            label: "거래대금 (BNB)",
+                            data: volumeData,
+                            borderColor: "rgba(255, 99, 132, 1)",
+                            backgroundColor: "rgba(255, 99, 132, 0.2)",
+                            fill: true,
                         },
                     ],
                 });
             } catch (err) {
                 console.error("차트 데이터 가져오기 실패:", err);
+                setChartData({
+                    labels: [],
+                    datasets: [],
+                });
             }
         };
-        if (tokenAddress) fetchFundingData();
+        fetchChartData();
     }, [tokenAddress]);
 
-    return (
-        <div>
-            <Line
-                data={chartData}
-                options={{
-                    scales: {
-                        x: {
-                            type: "time",
-                            time: {
-                                unit: "minute",
-                                displayFormats: { minute: "HH:mm" },
-                            },
-                            title: { display: true, text: "시간" },
-                        },
-                        y: {
-                            beginAtZero: true,
-                            title: { display: true, text: "모금액 (BNB)" },
-                        },
-                    },
-                }}
-            />
-        </div>
-    );
+    const options = {
+        responsive: true,
+        plugins: {
+            legend: {
+                position: "top",
+            },
+            title: {
+                display: true,
+                text: "프리세일 차트",
+            },
+        },
+    };
+
+    return <Line data={chartData} options={options} />;
 };
 
 export default FundingChart;

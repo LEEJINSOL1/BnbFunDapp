@@ -1,51 +1,60 @@
 import React, { useEffect, useState } from "react";
-import { ethers } from "ethers";
-import PresaleABI from "../abis/Presale.json";
+import axios from "axios";
+import { io } from "socket.io-client";
 
-const PRESALE_ADDRESS = "0x874aa4Bf234e140876232D0BeaEd39F68F7C13Ec";
-const BSC_TESTNET_RPC = "https://data-seed-prebsc-1-s1.binance.org:8545/";
+const socket = io("http://localhost:5000");
 
 const TransactionList = ({ tokenAddress }) => {
     const [transactions, setTransactions] = useState([]);
+    const [loading, setLoading] = useState(false);
+    const [error, setError] = useState("");
 
     useEffect(() => {
+        if (!tokenAddress) {
+            setTransactions([]);
+            return;
+        }
+
         const fetchTransactions = async () => {
+            setLoading(true);
             try {
-                const provider = new ethers.providers.JsonRpcProvider(BSC_TESTNET_RPC);
-                const presale = new ethers.Contract(PRESALE_ADDRESS, PresaleABI, provider);
-                const latestBlock = await provider.getBlockNumber();
-                const fromBlock = Math.max(latestBlock - 10000, 0);
-
-                const buyFilter = presale.filters.TokenBought(tokenAddress);
-                const sellFilter = presale.filters.TokenSold(tokenAddress);
-                const buyEvents = await presale.queryFilter(buyFilter, fromBlock, latestBlock);
-                const sellEvents = await presale.queryFilter(sellFilter, fromBlock, latestBlock);
-
-                const txs = [
-                    ...buyEvents.map(event => ({
-                        time: new Date(event.blockTimestamp * 1000).toLocaleString(),
-                        type: "매수",
-                        amount: ethers.utils.formatUnits(event.args.amount, 18),
-                        bnbValue: ethers.utils.formatEther(event.args.bnbValue),
-                    })),
-                    ...sellEvents.map(event => ({
-                        time: new Date(event.blockTimestamp * 1000).toLocaleString(),
-                        type: "매도",
-                        amount: ethers.utils.formatUnits(event.args.amount, 18),
-                        bnbValue: ethers.utils.formatEther(event.args.bnbValue),
-                    })),
-                ].sort((a, b) => new Date(b.time) - new Date(a.time));
-
+                const response = await axios.get(`http://localhost:5000/api/transactions/${tokenAddress}`);
+                const txs = response.data.map(tx => ({
+                    time: new Date(tx.timestamp).toLocaleString(),
+                    type: tx.type === "buy" ? "매수" : "매도",
+                    amount: tx.token_amount,
+                    bnbValue: tx.bnb_value,
+                }));
                 setTransactions(txs);
             } catch (err) {
-                console.error("트랜잭션 목록 가져오기 실패:", err);
+                console.error("트랜잭션 불러오기 실패:", err);
+                setError("트랜잭션 데이터를 불러오지 못했습니다.");
             }
+            setLoading(false);
         };
-        if (tokenAddress) fetchTransactions();
+
+        fetchTransactions();
+        socket.emit("joinTokenRoom", tokenAddress);
+
+        socket.on("newTransaction", (tx) => {
+            const formatted = {
+                time: new Date(tx.timestamp).toLocaleString(),
+                type: tx.type === "buy" ? "매수" : "매도",
+                amount: tx.amount,
+                bnbValue: tx.bnbValue,
+            };
+            setTransactions(prev => [formatted, ...prev]);
+        });
+
+        return () => {
+            socket.off("newTransaction");
+        };
     }, [tokenAddress]);
 
     return (
         <div className="overflow-x-auto">
+            {loading && <div className="mb-4 p-2 bg-blue-600 rounded">로딩 중...</div>}
+            {error && <div className="mb-4 p-2 bg-red-600 rounded">{error}</div>}
             <table className="w-full text-sm">
                 <thead>
                     <tr className="border-b border-gray-700">

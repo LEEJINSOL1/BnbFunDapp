@@ -2,6 +2,7 @@ import React, { useState } from "react";
 import { ethers } from "ethers";
 import TokenFactoryABI from "../abis/TokenFactory.json";
 import PresaleABI from "../abis/Presale.json";
+import axios from "axios";
 
 const TOKEN_FACTORY_ADDRESS = "0x6A4170Af52417CF39df57de2Df3e29a4D994cc8C";
 const PRESALE_ADDRESS = "0x874aa4Bf234e140876232D0BeaEd39F68F7C13Ec";
@@ -27,6 +28,23 @@ const TradePanel = ({ account, signer, selectedToken, setTokens }) => {
         }
     };
 
+    const fetchTokens = async () => {
+        try {
+            const response = await axios.get("http://localhost:5000/api/tokens");
+            const tokenList = response.data.map(token => ({
+                address: token.token_address,
+                name: token.name,
+                symbol: token.symbol,
+                createdAt: new Date(token.created_at).toLocaleString(),
+                raisedFunds: token.raised_funds,
+                volume: token.volume,
+            }));
+            setTokens(tokenList);
+        } catch (err) {
+            console.error("토큰 목록 가져오기 실패:", err);
+        }
+    };
+
     const handleCreateToken = async () => {
         const trimmedName = name.trim();
         const trimmedSymbol = symbol.trim();
@@ -43,24 +61,22 @@ const TradePanel = ({ account, signer, selectedToken, setTokens }) => {
             });
             const receipt = await tx.wait();
 
-            // 이벤트 로그 출력
-            console.log("이벤트 로그:", receipt.events);
-
-            // TokenCreated 이벤트 찾기
             const event = receipt.events.find(e => e.event === "TokenCreated");
             if (!event) {
                 throw new Error("토큰 생성 실패: TokenCreated 이벤트를 찾을 수 없습니다.");
             }
 
             const { tokenAddress, name: eventName, symbol: eventSymbol, createdAt } = event.args;
-            setTokens(prev => [...prev, {
-                address: tokenAddress,
+            const newToken = {
+                token_address: tokenAddress,
                 name: eventName,
                 symbol: eventSymbol,
-                createdAt: new Date(parseInt(createdAt) * 1000).toLocaleString(),
-                raisedFunds: "0 BNB",
+                created_at: new Date(parseInt(createdAt) * 1000).toISOString().slice(0, 19).replace('T', ' '),
+                raised_funds: "0 BNB",
                 volume: "0 BNB",
-            }]);
+            };
+            await axios.post("http://localhost:5000/api/tokens", newToken);
+            await fetchTokens();
             setError("");
         } catch (err) {
             console.error("토큰 생성 실패:", err);
@@ -79,7 +95,40 @@ const TradePanel = ({ account, signer, selectedToken, setTokens }) => {
             const tx = await presale.buyTokens(selectedToken.address, {
                 value: ethers.utils.parseEther(bnbAmount),
             });
-            await tx.wait();
+            console.log("Buy Transaction Hash:", tx.hash);
+            const receipt = await tx.wait();
+            console.log("Buy Transaction Receipt:", receipt);
+
+            const event = receipt.events.find(e => e.event === "TokenBought");
+            if (!event) {
+                throw new Error("매수 실패: TokenBought 이벤트를 찾을 수 없습니다.");
+            }
+
+            const { token, buyer, amount, bnbValue } = event.args;
+            console.log("TokenBought Event:", {
+                token,
+                buyer,
+                amount: ethers.utils.formatUnits(amount, 18),
+                bnbValue: ethers.utils.formatEther(bnbValue)
+            });
+
+            // DB에 트랜잭션 데이터 저장
+            await axios.post("http://localhost:5000/api/transactions", {
+                token_address: token,
+                type: "buy",
+                token_amount: ethers.utils.formatUnits(amount, 18),
+                bnb_value: ethers.utils.formatEther(bnbValue),
+                timestamp: new Date().toISOString().slice(0, 19).replace('T', ' '),
+            });
+
+            // 모금액 업데이트
+            await axios.post("http://localhost:5000/api/updateFunds", {
+                tokenAddress: token,
+                raisedFunds: ethers.utils.formatEther(bnbValue),
+                type: "buy",
+            });
+
+            await fetchTokens();
             setError("");
         } catch (err) {
             console.error("매수 실패:", err);
@@ -98,7 +147,40 @@ const TradePanel = ({ account, signer, selectedToken, setTokens }) => {
             const token = new ethers.Contract(selectedToken.address, ["function approve(address spender, uint256 amount) public returns (bool)"], signer);
             await token.approve(PRESALE_ADDRESS, ethers.utils.parseUnits(sellAmount, 18));
             const tx = await presale.sellTokens(selectedToken.address, ethers.utils.parseUnits(sellAmount, 18));
-            await tx.wait();
+            console.log("Sell Transaction Hash:", tx.hash);
+            const receipt = await tx.wait();
+            console.log("Sell Transaction Receipt:", receipt);
+
+            const event = receipt.events.find(e => e.event === "TokenSold");
+            if (!event) {
+                throw new Error("매도 실패: TokenSold 이벤트를 찾을 수 없습니다.");
+            }
+
+            const { token: tokenAddress, seller, amount, bnbValue } = event.args;
+            console.log("TokenSold Event:", {
+                token: tokenAddress,
+                seller,
+                amount: ethers.utils.formatUnits(amount, 18),
+                bnbValue: ethers.utils.formatEther(bnbValue)
+            });
+
+            // DB에 트랜잭션 데이터 저장
+            await axios.post("http://localhost:5000/api/transactions", {
+                token_address: tokenAddress,
+                type: "sell",
+                token_amount: ethers.utils.formatUnits(amount, 18),
+                bnb_value: ethers.utils.formatEther(bnbValue),
+                timestamp: new Date().toISOString().slice(0, 19).replace('T', ' '),
+            });
+
+            // 거래대금 업데이트
+            await axios.post("http://localhost:5000/api/updateFunds", {
+                tokenAddress: tokenAddress,
+                volume: ethers.utils.formatEther(bnbValue),
+                type: "sell",
+            });
+
+            await fetchTokens();
             setError("");
         } catch (err) {
             console.error("매도 실패:", err);
