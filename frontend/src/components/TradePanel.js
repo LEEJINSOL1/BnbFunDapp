@@ -164,6 +164,7 @@ const TradePanel = ({ account, signer, selectedToken, setTokens }) => {
                 bnbValue: ethers.utils.formatEther(bnbValue)
             });
 
+            
             // DB에 트랜잭션 데이터 저장
             await axios.post("http://localhost:5000/api/transactions", {
                 token_address: tokenAddress,

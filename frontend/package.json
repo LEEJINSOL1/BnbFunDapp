@@ -15,7 +15,7 @@
     "date-fns": "^4.1.0",
     "eslint-plugin-jsx-a11y": "6.7.1",
     "ethers": "^5.7.2",
-    "lightweight-charts": "^5.0.6",
+    "lightweight-charts": "^4.2.0",
     "react": "^19.1.0",
     "react-chartjs-2": "^5.3.0",
     "react-dom": "^19.1.0",

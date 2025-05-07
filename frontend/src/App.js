@@ -47,7 +47,7 @@ function App() {
         const fetchTokens = async () => {
             try {
                 const response = await axios.get("http://localhost:5000/api/tokens");
-                const tokenList = response.data.map(token => ({
+                const tokenList = response.data.map((token) => ({
                     address: token.token_address,
                     name: token.name,
                     symbol: token.symbol,
@@ -56,6 +56,15 @@ function App() {
                     volume: token.volume,
                 }));
                 setTokens(tokenList);
+
+                if (tokenList.length > 0) {
+                    const highestFundedToken = tokenList.reduce((max, token) => {
+                        const maxValue = parseFloat(max.raisedFunds.replace(" BNB", ""));
+                        const tokenValue = parseFloat(token.raisedFunds.replace(" BNB", ""));
+                        return tokenValue > maxValue ? token : max;
+                    }, tokenList[0]);
+                    setSelectedToken(highestFundedToken);
+                }
             } catch (err) {
                 console.error("토큰 목록 가져오기 실패:", err);
             }
@@ -63,7 +72,7 @@ function App() {
         fetchTokens();
 
         socket.on("newToken", (newToken) => {
-            setTokens(prev => [
+            setTokens((prev) => [
                 {
                     address: newToken.token_address,
                     name: newToken.name,
@@ -77,8 +86,8 @@ function App() {
         });
 
         socket.on("updateToken", (updatedToken) => {
-            setTokens(prev =>
-                prev.map(token =>
+            setTokens((prev) =>
+                prev.map((token) =>
                     token.address === updatedToken.token_address
                         ? { ...token, raisedFunds: updatedToken.raised_funds, volume: updatedToken.volume }
                         : token
@@ -92,6 +101,120 @@ function App() {
         };
     }, []);
 
+    const fetchChartData = async () => {
+        if (!selectedToken) {
+            setChartData({
+                labels: [],
+                datasets: [
+                    { label: "프리세일 모금액 (BNB)", data: [], borderColor: "rgb(75, 192, 192)", tension: 0.1 },
+                    { label: "거래대금 (BNB)", data: [], borderColor: "rgb(255, 99, 132)", tension: 0.1 },
+                ],
+            });
+            return;
+        }
+        try {
+            const response = await axios.get(`http://localhost:5000/api/transactions/${selectedToken.address}`);
+            const transactions = response.data;
+    
+            if (transactions.length === 0) {
+                setChartData({
+                    labels: [],
+                    datasets: [
+                        { label: "프리세일 모금액 (BNB)", data: [], borderColor: "rgb(75, 192, 192)", tension: 0.1 },
+                        { label: "거래대금 (BNB)", data: [], borderColor: "rgb(255, 99, 132)", tension: 0.1 },
+                    ],
+                });
+                return;
+            }
+    
+            // 트랜잭션을 타임스탬프 순으로 정렬
+            transactions.sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
+    
+            const timestamps = transactions.map(tx => new Date(tx.timestamp).getTime());
+            const minTime = Math.min(...timestamps);
+            const maxTime = Math.max(...timestamps);
+    
+            const now = new Date();
+            const startTime = new Date(Math.floor(minTime / (5 * 60 * 1000)) * (5 * 60 * 1000));
+            const endTime = new Date(Math.ceil(now.getTime() / (5 * 60 * 1000)) * (5 * 60 * 1000));
+    
+            const labels = [];
+            const raisedFunds = [];
+            const volumes = [];
+            let cumulativeRaised = 0;
+    
+            // 첫 캔들의 시가를 첫 번째 트랜잭션의 bnb_value로 설정
+            let isFirstCandle = true;
+    
+            for (let time = startTime; time <= endTime; time = new Date(time.getTime() + 5 * 60 * 1000)) {
+                labels.push(time.toISOString());
+                const timeStart = new Date(time.getTime());
+                const timeEnd = new Date(time.getTime() + 5 * 60 * 1000);
+    
+                const recentTxs = transactions.filter(tx => {
+                    const txTime = new Date(tx.timestamp);
+                    return txTime >= timeStart && txTime < timeEnd;
+                });
+    
+                // 매수 트랜잭션만 고려
+                const buyTxs = recentTxs.filter(tx => tx.type === "buy");
+                const raisedInPeriod = buyTxs.reduce((sum, tx) => {
+                    const value = parseFloat(tx.bnb_value || 0);
+                    return sum + (isNaN(value) ? 0 : value);
+                }, 0);
+    
+                cumulativeRaised += raisedInPeriod;
+    
+                // 캔들 데이터 계산
+                let openValue;
+                if (isFirstCandle && buyTxs.length > 0) {
+                    // 첫 캔들의 시가는 첫 번째 매수 트랜잭션의 bnb_value
+                    openValue = parseFloat(buyTxs[0].bnb_value || 0).toFixed(8);
+                    isFirstCandle = false;
+                } else {
+                    // 후속 캔들은 이전 캔들의 close 값 또는 0
+                    openValue = raisedFunds.length > 0 ? raisedFunds[raisedFunds.length - 1] : "0.00000000";
+                }
+    
+                // close는 누적 모금액
+                const closeValue = cumulativeRaised.toFixed(8);
+                // high와 low는 단순히 close로 설정 (필요 시 트랜잭션별 bnb_value로 계산 가능)
+                const highValue = closeValue;
+                const lowValue = closeValue;
+    
+                raisedFunds.push(closeValue);
+    
+                // 거래대금 (매도 트랜잭션)
+                const volume = recentTxs
+                    .filter(tx => tx.type === "sell")
+                    .reduce((sum, tx) => {
+                        const value = parseFloat(tx.bnb_value || 0);
+                        return sum + (isNaN(value) ? 0 : value);
+                    }, 0);
+                volumes.push(volume.toFixed(8));
+            }
+    
+            console.log("fetchChartData 결과:", { labels, raisedFunds, volumes, transactions });
+    
+            setChartData({
+                labels,
+                datasets: [
+                    { label: "프리세일 모금액 (BNB)", data: raisedFunds, borderColor: "rgb(75, 192, 192)", tension: 0.1 },
+                    { label: "거래대금 (BNB)", data: volumes, borderColor: "rgb(255, 99, 132)", tension: 0.1 },
+                ],
+            });
+        } catch (err) {
+            console.error("차트 데이터 가져오기 실패:", err);
+            setChartData({
+                labels: [],
+                datasets: [
+                    { label: "프리세일 모금액 (BNB)", data: [], borderColor: "rgb(75, 192, 192)", tension: 0.1 },
+                    { label: "거래대금 (BNB)", data: [], borderColor: "rgb(255, 99, 132)", tension: 0.1 },
+                ],
+            });
+        }
+    };
+
     useEffect(() => {
         const fetchTransactions = async () => {
             if (!selectedToken) {
@@ -101,75 +224,23 @@ function App() {
             try {
                 setLoadingTransactions(true);
                 const response = await axios.get(`http://localhost:5000/api/transactions/${selectedToken.address}`);
-                setTransactions(
-                    response.data.map(tx => ({
+                const mappedTransactions = response.data.map((tx) => {
+                    const utcDate = new Date(tx.timestamp);
+                    console.log("App.js - Transaction timestamp (UTC):", utcDate, "Raw timestamp:", tx.timestamp);
+                    return {
                         tokenAddress: tx.token_address,
                         type: tx.type === "buy" ? "매수" : "매도",
                         amount: tx.token_amount,
                         bnbValue: tx.bnb_value,
-                        timestamp: new Date(tx.timestamp).getTime(),
-                    }))
-                );
+                        timestamp: utcDate.getTime(),
+                    };
+                });
+                setTransactions(mappedTransactions);
             } catch (err) {
                 console.error("트랜잭션 조회 실패:", err);
                 setTransactions([]);
             } finally {
                 setLoadingTransactions(false);
-            }
-        };
-
-        const fetchChartData = async () => {
-            if (!selectedToken) {
-                setChartData({
-                    labels: [],
-                    datasets: [
-                        { label: "프리세일 모금액 (BNB)", data: [], borderColor: "rgb(75, 192, 192)", tension: 0.1 },
-                        { label: "거래대금 (BNB)", data: [], borderColor: "rgb(255, 99, 132)", tension: 0.1 },
-                    ],
-                });
-                return;
-            }
-            try {
-                const response = await axios.get(`http://localhost:5000/api/transactions/${selectedToken.address}`);
-                const transactions = response.data;
-
-                const now = new Date();
-                const labels = [];
-                const raisedFunds = [];
-                const volumes = [];
-                for (let i = 5; i >= 0; i--) {
-                    const time = new Date(now.getTime() - i * 5 * 60 * 1000);
-                    labels.push(time.toISOString());
-                    const recentTxs = transactions.filter(tx => {
-                        const txTime = new Date(tx.timestamp);
-                        return txTime >= new Date(time.getTime() - 5 * 60 * 1000) && txTime <= time;
-                    });
-                    const raised = recentTxs
-                        .filter(tx => tx.type === "buy")
-                        .reduce((sum, tx) => sum + parseFloat(tx.bnb_value || 0), 0);
-                    const volume = recentTxs
-                        .filter(tx => tx.type === "sell")
-                        .reduce((sum, tx) => sum + parseFloat(tx.bnb_value || 0), 0);
-                    raisedFunds.push(raised.toFixed(8));
-                    volumes.push(volume.toFixed(8));
-                }
-
-                setChartData({
-                    labels,
-                    datasets: [
-                        { label: "프리세일 모금액 (BNB)", data: raisedFunds, borderColor: "rgb(75, 192, 192)", tension: 0.1 },
-                        { label: "거래대금 (BNB)", data: volumes, borderColor: "rgb(255, 99, 132)", tension: 0.1 },
-                    ],
-                });
-            } catch (err) {
-                console.error("차트 데이터 가져오기 실패:", err);
-                setChartData({
-                    labels: [],
-                    datasets: [
-                        { label: "프리세일 모금액 (BNB)", data: [], borderColor: "rgb(75, 192, 192)", tension: 0.1 },
-                        { label: "거래대금 (BNB)", data: [], borderColor: "rgb(255, 99, 132)", tension: 0.1 },
-                    ],
-                });
             }
         };
 
@@ -179,32 +250,40 @@ function App() {
         if (selectedToken) {
             socket.emit("joinTokenRoom", selectedToken.address);
             socket.on("newTransaction", (tx) => {
+                const utcDate = new Date(tx.timestamp);
+                console.log("App.js - New Transaction timestamp (UTC):", utcDate, "Raw timestamp:", tx.timestamp);
                 const formatted = {
                     tokenAddress: selectedToken.address,
                     type: tx.type === "buy" ? "매수" : "매도",
-                    amount: tx.amount,
-                    bnbValue: tx.bnbValue,
-                    timestamp: new Date(tx.timestamp).getTime(),
+                    amount: tx.token_amount,
+                    bnbValue: tx.bnb_value,
+                    timestamp: utcDate.getTime(),
                 };
-                setTransactions(prev => [formatted, ...prev]);
+                setTransactions((prev) => [formatted, ...prev]);
 
-                setChartData(prev => {
+                setChartData((prev) => {
                     const now = new Date();
                     const labels = [...prev.labels];
                     const raisedFunds = [...prev.datasets[0].data];
                     const volumes = [...prev.datasets[1].data];
 
-                    if (labels.length > 0) {
-                        const lastIndex = labels.length - 1;
-                        if (tx.type === "buy") {
-                            raisedFunds[lastIndex] = (parseFloat(raisedFunds[lastIndex]) + parseFloat(tx.bnbValue)).toFixed(8);
-                        } else if (tx.type === "sell") {
-                            volumes[lastIndex] = (parseFloat(volumes[lastIndex]) + parseFloat(tx.bnbValue)).toFixed(8);
-                        }
-                    } else {
-                        labels.push(now.toISOString());
-                        raisedFunds.push(tx.type === "buy" ? parseFloat(tx.bnbValue).toFixed(8) : "0");
-                        volumes.push(tx.type === "sell" ? parseFloat(tx.bnbValue).toFixed(8) : "0");
+                    const txTime = utcDate;
+                    let lastLabelTime = labels.length > 0 ? new Date(labels[labels.length - 1]) : null;
+
+                    if (!lastLabelTime || txTime > new Date(lastLabelTime.getTime() + 5 * 60 * 1000)) {
+                        const newLabelTime = new Date(
+                            Math.floor(txTime.getTime() / (5 * 60 * 1000)) * (5 * 60 * 1000)
+                        );
+                        labels.push(newLabelTime.toISOString());
+                        raisedFunds.push(raisedFunds.length > 0 ? raisedFunds[raisedFunds.length - 1] : "0.00000000");
+                        volumes.push("0.00000000");
+                    }
+
+                    const lastIndex = labels.length - 1;
+                    if (tx.type === "buy") {
+                        raisedFunds[lastIndex] = (parseFloat(raisedFunds[lastIndex]) + parseFloat(tx.bnb_value)).toFixed(8);
+                    } else if (tx.type === "sell") {
+                        volumes[lastIndex] = (parseFloat(volumes[lastIndex]) + parseFloat(tx.bnb_value)).toFixed(8);
                     }
 
                     return {
@@ -275,10 +354,7 @@ function App() {
                         loadingTransactions ? (
                             <p className="text-gray-400">트랜잭션 로딩 중...</p>
                         ) : (
-                            <TransactionList
-                                tokenAddress={selectedToken.address}
-                                transactions={transactions}
-                            />
+                            <TransactionList tokenAddress={selectedToken.address} />
                         )
                     ) : (
                         <p className="text-gray-400">토큰을 선택하세요.</p>
@@ -293,6 +369,7 @@ function App() {
                         setTokens={setTokens}
                         onSelect={setSelectedToken}
                         provider={provider}
+                        selectedToken={selectedToken}
                     />
                 </div>
                 <div className="bg-gray-800 p-4 rounded-lg shadow-lg m-4">
