@@ -23,14 +23,14 @@ const TransactionList = ({ tokenAddress }) => {
                 const txs = response.data.map(tx => {
                     const date = new Date(tx.timestamp);
                     const formattedDate = date.toLocaleString("ko-KR", {
-                        timeZone: "UTC",
+                        timeZone: "Asia/Seoul",
                         year: "2-digit",
                         month: "2-digit",
                         day: "2-digit",
                         hour: "2-digit",
                         minute: "2-digit",
                     });
-                    console.log("TransactionList - Transaction timestamp (UTC):", formattedDate, "Raw timestamp:", tx.timestamp);
+                    //console.log("TransactionList - Transaction timestamp (KST):", formattedDate, "Raw timestamp:", tx.timestamp);
                     return {
                         time: formattedDate,
                         type: tx.type === "buy" ? "매수" : "매도",
@@ -54,21 +54,21 @@ const TransactionList = ({ tokenAddress }) => {
             console.log("newTransaction received:", tx);
             const date = new Date(tx.timestamp);
             const formattedDate = date.toLocaleString("ko-KR", {
-                timeZone: "UTC",
+                timeZone: "Asia/Seoul",
                 year: "2-digit",
                 month: "2-digit",
                 day: "2-digit",
                 hour: "2-digit",
                 minute: "2-digit",
             });
-            console.log("TransactionList - New Transaction timestamp (UTC):", formattedDate, "Raw timestamp:", tx.timestamp);
+            console.log("TransactionList - New Transaction timestamp (KST):", formattedDate, "Raw timestamp:", tx.timestamp);
             const formatted = {
                 time: formattedDate,
                 type: tx.type === "buy" ? "매수" : "매도",
-                amount: tx.amount || tx.token_amount,
-                bnbValue: tx.bnbValue || tx.bnb_value,
+                amount: tx.token_amount,
+                bnbValue: tx.bnb_value,
             };
-            setTransactions(prev => [formatted, ...prev]);
+            setTransactions(prev => [formatted, ...prev.slice(0, 99)]);
         });
 
         socket.on("connect", () => {
@@ -121,3 +121,7 @@ const TransactionList = ({ tokenAddress }) => {
 };
 
 export default TransactionList;
+
+//직무 지원직무는 ~~한 업무를 ~~를 담당
+//이러한 직무를 수행하기위해 필요한 지식은 ~~, ~~역량필요
+// 이러한 지식을 함양하기위해 ~~ㅇ

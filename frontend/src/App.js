@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { ethers } from "ethers";
 import TokenList from "./components/TokenList";
 import FundingChart from "./components/FundingChart";
@@ -8,7 +8,11 @@ import "./index.css";
 import axios from "axios";
 import { io } from "socket.io-client";
 
-const socket = io("http://localhost:5000");
+const socket = io("http://localhost:5000", {
+    reconnection: true,
+    reconnectionAttempts: 5,
+    reconnectionDelay: 1000
+});
 
 function App() {
     const [account, setAccount] = useState(null);
@@ -21,23 +25,9 @@ function App() {
     });
     const [transactions, setTransactions] = useState([]);
     const [loadingTransactions, setLoadingTransactions] = useState(false);
-    const [chartData, setChartData] = useState({
-        labels: [],
-        datasets: [
-            {
-                label: "프리세일 모금액 (BNB)",
-                data: [],
-                borderColor: "rgb(75, 192, 192)",
-                tension: 0.1,
-            },
-            {
-                label: "거래대금 (BNB)",
-                data: [],
-                borderColor: "rgb(255, 99, 132)",
-                tension: 0.1,
-            },
-        ],
-    });
+    const [chartData, setChartData] = useState([]);
+    const [interval, setChartInterval] = useState("1m");    const socketInitialized = useRef(false);
+    const lastTokenAddress = useRef(null);
 
     useEffect(() => {
         localStorage.setItem("tokens", JSON.stringify(tokens));
@@ -51,13 +41,13 @@ function App() {
                     address: token.token_address,
                     name: token.name,
                     symbol: token.symbol,
-                    createdAt: new Date(token.created_at).toLocaleString(),
+                    createdAt: new Date(token.created_at).toLocaleString("ko-KR", { timeZone: "Asia/Seoul" }),
                     raisedFunds: token.raised_funds,
                     volume: token.volume,
                 }));
                 setTokens(tokenList);
 
-                if (tokenList.length > 0) {
+                if (tokenList.length > 0 && !selectedToken) {
                     const highestFundedToken = tokenList.reduce((max, token) => {
                         const maxValue = parseFloat(max.raisedFunds.replace(" BNB", ""));
                         const tokenValue = parseFloat(token.raisedFunds.replace(" BNB", ""));
@@ -70,148 +60,23 @@ function App() {
             }
         };
         fetchTokens();
-
-        socket.on("newToken", (newToken) => {
-            setTokens((prev) => [
-                {
-                    address: newToken.token_address,
-                    name: newToken.name,
-                    symbol: newToken.symbol,
-                    createdAt: new Date(newToken.created_at).toLocaleString(),
-                    raisedFunds: newToken.raised_funds,
-                    volume: newToken.volume,
-                },
-                ...prev,
-            ]);
-        });
-
-        socket.on("updateToken", (updatedToken) => {
-            setTokens((prev) =>
-                prev.map((token) =>
-                    token.address === updatedToken.token_address
-                        ? { ...token, raisedFunds: updatedToken.raised_funds, volume: updatedToken.volume }
-                        : token
-                )
-            );
-        });
-
-        return () => {
-            socket.off("newToken");
-            socket.off("updateToken");
-        };
     }, []);
 
     const fetchChartData = async () => {
         if (!selectedToken) {
-            setChartData({
-                labels: [],
-                datasets: [
-                    { label: "프리세일 모금액 (BNB)", data: [], borderColor: "rgb(75, 192, 192)", tension: 0.1 },
-                    { label: "거래대금 (BNB)", data: [], borderColor: "rgb(255, 99, 132)", tension: 0.1 },
-                ],
-            });
+            setChartData([]);
             return;
         }
         try {
-            const response = await axios.get(`http://localhost:5000/api/transactions/${selectedToken.address}`);
-            const transactions = response.data;
-    
-            if (transactions.length === 0) {
-                setChartData({
-                    labels: [],
-                    datasets: [
-                        { label: "프리세일 모금액 (BNB)", data: [], borderColor: "rgb(75, 192, 192)", tension: 0.1 },
-                        { label: "거래대금 (BNB)", data: [], borderColor: "rgb(255, 99, 132)", tension: 0.1 },
-                    ],
-                });
-                return;
-            }
-    
-            // 트랜잭션을 타임스탬프 순으로 정렬
-            transactions.sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
-    
-            const timestamps = transactions.map(tx => new Date(tx.timestamp).getTime());
-            const minTime = Math.min(...timestamps);
-            const maxTime = Math.max(...timestamps);
-    
-            const now = new Date();
-            const startTime = new Date(Math.floor(minTime / (5 * 60 * 1000)) * (5 * 60 * 1000));
-            const endTime = new Date(Math.ceil(now.getTime() / (5 * 60 * 1000)) * (5 * 60 * 1000));
-    
-            const labels = [];
-            const raisedFunds = [];
-            const volumes = [];
-            let cumulativeRaised = 0;
-    
-            // 첫 캔들의 시가를 첫 번째 트랜잭션의 bnb_value로 설정
-            let isFirstCandle = true;
-    
-            for (let time = startTime; time <= endTime; time = new Date(time.getTime() + 5 * 60 * 1000)) {
-                labels.push(time.toISOString());
-                const timeStart = new Date(time.getTime());
-                const timeEnd = new Date(time.getTime() + 5 * 60 * 1000);
-    
-                const recentTxs = transactions.filter(tx => {
-                    const txTime = new Date(tx.timestamp);
-                    return txTime >= timeStart && txTime < timeEnd;
-                });
-    
-                // 매수 트랜잭션만 고려
-                const buyTxs = recentTxs.filter(tx => tx.type === "buy");
-                const raisedInPeriod = buyTxs.reduce((sum, tx) => {
-                    const value = parseFloat(tx.bnb_value || 0);
-                    return sum + (isNaN(value) ? 0 : value);
-                }, 0);
-    
-                cumulativeRaised += raisedInPeriod;
-    
-                // 캔들 데이터 계산
-                let openValue;
-                if (isFirstCandle && buyTxs.length > 0) {
-                    // 첫 캔들의 시가는 첫 번째 매수 트랜잭션의 bnb_value
-                    openValue = parseFloat(buyTxs[0].bnb_value || 0).toFixed(8);
-                    isFirstCandle = false;
-                } else {
-                    // 후속 캔들은 이전 캔들의 close 값 또는 0
-                    openValue = raisedFunds.length > 0 ? raisedFunds[raisedFunds.length - 1] : "0.00000000";
-                }
-    
-                // close는 누적 모금액
-                const closeValue = cumulativeRaised.toFixed(8);
-                // high와 low는 단순히 close로 설정 (필요 시 트랜잭션별 bnb_value로 계산 가능)
-                const highValue = closeValue;
-                const lowValue = closeValue;
-    
-                raisedFunds.push(closeValue);
-    
-                // 거래대금 (매도 트랜잭션)
-                const volume = recentTxs
-                    .filter(tx => tx.type === "sell")
-                    .reduce((sum, tx) => {
-                        const value = parseFloat(tx.bnb_value || 0);
-                        return sum + (isNaN(value) ? 0 : value);
-                    }, 0);
-                volumes.push(volume.toFixed(8));
-            }
-    
-            console.log("fetchChartData 결과:", { labels, raisedFunds, volumes, transactions });
-    
-            setChartData({
-                labels,
-                datasets: [
-                    { label: "프리세일 모금액 (BNB)", data: raisedFunds, borderColor: "rgb(75, 192, 192)", tension: 0.1 },
-                    { label: "거래대금 (BNB)", data: volumes, borderColor: "rgb(255, 99, 132)", tension: 0.1 },
-                ],
-            });
+            const since = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString().slice(0, 19).replace('T', ' ');
+            const response = await axios.get(
+                `http://localhost:5000/api/candlestick/${selectedToken.address}?since=${since}&interval=${interval}`
+            );
+            console.log("Fetched chartData:", response.data);
+            setChartData(response.data);
         } catch (err) {
             console.error("차트 데이터 가져오기 실패:", err);
-            setChartData({
-                labels: [],
-                datasets: [
-                    { label: "프리세일 모금액 (BNB)", data: [], borderColor: "rgb(75, 192, 192)", tension: 0.1 },
-                    { label: "거래대금 (BNB)", data: [], borderColor: "rgb(255, 99, 132)", tension: 0.1 },
-                ],
-            });
+            setChartData([]);
         }
     };
 
@@ -224,17 +89,14 @@ function App() {
             try {
                 setLoadingTransactions(true);
                 const response = await axios.get(`http://localhost:5000/api/transactions/${selectedToken.address}`);
-                const mappedTransactions = response.data.map((tx) => {
-                    const utcDate = new Date(tx.timestamp);
-                    console.log("App.js - Transaction timestamp (UTC):", utcDate, "Raw timestamp:", tx.timestamp);
-                    return {
-                        tokenAddress: tx.token_address,
-                        type: tx.type === "buy" ? "매수" : "매도",
-                        amount: tx.token_amount,
-                        bnbValue: tx.bnb_value,
-                        timestamp: utcDate.getTime(),
-                    };
-                });
+                const mappedTransactions = response.data.map((tx) => ({
+                    id: `${tx.timestamp}-${tx.token_address}-${tx.type}`,
+                    tokenAddress: tx.token_address,
+                    type: tx.type === "buy" ? "매수" : "매도",
+                    amount: tx.token_amount,
+                    bnbValue: tx.bnb_value,
+                    timestamp: new Date(tx.timestamp).getTime(),
+                }));
                 setTransactions(mappedTransactions);
             } catch (err) {
                 console.error("트랜잭션 조회 실패:", err);
@@ -248,59 +110,164 @@ function App() {
         fetchChartData();
 
         if (selectedToken) {
+            // 이전 방 나가기
+            if (lastTokenAddress.current && lastTokenAddress.current !== selectedToken.address) {
+                socket.emit("leaveTokenRoom", lastTokenAddress.current);
+                console.log(`Left room: ${lastTokenAddress.current}`);
+            }
+            // 새 방 참여
             socket.emit("joinTokenRoom", selectedToken.address);
-            socket.on("newTransaction", (tx) => {
-                const utcDate = new Date(tx.timestamp);
-                console.log("App.js - New Transaction timestamp (UTC):", utcDate, "Raw timestamp:", tx.timestamp);
-                const formatted = {
-                    tokenAddress: selectedToken.address,
-                    type: tx.type === "buy" ? "매수" : "매도",
-                    amount: tx.token_amount,
-                    bnbValue: tx.bnb_value,
-                    timestamp: utcDate.getTime(),
-                };
-                setTransactions((prev) => [formatted, ...prev]);
+            console.log(`Joined room: ${selectedToken.address}`);
+            lastTokenAddress.current = selectedToken.address;
 
-                setChartData((prev) => {
-                    const now = new Date();
-                    const labels = [...prev.labels];
-                    const raisedFunds = [...prev.datasets[0].data];
-                    const volumes = [...prev.datasets[1].data];
+            if (!socketInitialized.current) {
+                socketInitialized.current = true;
 
-                    const txTime = utcDate;
-                    let lastLabelTime = labels.length > 0 ? new Date(labels[labels.length - 1]) : null;
-
-                    if (!lastLabelTime || txTime > new Date(lastLabelTime.getTime() + 5 * 60 * 1000)) {
-                        const newLabelTime = new Date(
-                            Math.floor(txTime.getTime() / (5 * 60 * 1000)) * (5 * 60 * 1000)
-                        );
-                        labels.push(newLabelTime.toISOString());
-                        raisedFunds.push(raisedFunds.length > 0 ? raisedFunds[raisedFunds.length - 1] : "0.00000000");
-                        volumes.push("0.00000000");
+                socket.on("connect", () => {
+                    console.log("Socket connected:", socket.id);
+                    if (selectedToken) {
+                        socket.emit("joinTokenRoom", selectedToken.address);
+                        console.log(`Rejoined room on reconnect: ${selectedToken.address}`);
                     }
-
-                    const lastIndex = labels.length - 1;
-                    if (tx.type === "buy") {
-                        raisedFunds[lastIndex] = (parseFloat(raisedFunds[lastIndex]) + parseFloat(tx.bnb_value)).toFixed(8);
-                    } else if (tx.type === "sell") {
-                        volumes[lastIndex] = (parseFloat(volumes[lastIndex]) + parseFloat(tx.bnb_value)).toFixed(8);
-                    }
-
-                    return {
-                        labels,
-                        datasets: [
-                            { label: "프리세일 모금액 (BNB)", data: raisedFunds, borderColor: "rgb(75, 192, 192)", tension: 0.1 },
-                            { label: "거래대금 (BNB)", data: volumes, borderColor: "rgb(255, 99, 132)", tension: 0.1 },
-                        ],
-                    };
                 });
-            });
-        }
 
-        return () => {
-            socket.off("newTransaction");
-        };
-    }, [selectedToken]);
+                socket.on("disconnect", () => {
+                    console.warn("Socket disconnected");
+                });
+
+                socket.on("newToken", (newToken) => {
+                    setTokens((prev) => [
+                        {
+                            address: newToken.token_address,
+                            name: newToken.name,
+                            symbol: newToken.symbol,
+                            createdAt: new Date(newToken.created_at).toLocaleString("ko-KR", { timeZone: "Asia/Seoul" }),
+                            raisedFunds: newToken.raised_funds,
+                            volume: newToken.volume,
+                        },
+                        ...prev,
+                    ]);
+                });
+
+                socket.on("updateToken", (updatedToken) => {
+                    setTokens((prev) =>
+                        prev.map((token) =>
+                            token.address === updatedToken.token_address
+                                ? { ...token, raisedFunds: updatedToken.raised_funds, volume: updatedToken.volume }
+                                : token
+                        )
+                    );
+                });
+
+                const handleLatestCandle = (candle) => {
+                    console.log("Received latestCandle:", candle);
+                    setChartData((prev) => {
+                        const newChartData = [...prev];
+                        const lastCandleIndex = newChartData.findIndex(c => c.time === candle.time);
+                        if (lastCandleIndex >= 0) {
+                            newChartData[lastCandleIndex] = candle;
+                        } else {
+                            newChartData.push(candle);
+                        }
+                        console.log("Updated chartData with latestCandle:", newChartData);
+                        return newChartData;
+                    });
+                };
+
+                const handleNewTransaction = (tx) => {
+                    console.log("Received newTransaction:", tx);
+
+                    if (tx.token_address !== selectedToken.address) {
+                        console.log(`Ignoring transaction for non-selected token: ${tx.token_address}`);
+                        return;
+                    }
+
+                    const txTime = new Date(tx.timestamp);
+                    if (isNaN(txTime.getTime())) {
+                        console.error("유효하지 않은 tx.timestamp:", tx.timestamp);
+                        return;
+                    }
+
+                    const txId = `${tx.timestamp}-${tx.token_address}-${tx.type}`;
+                    setTransactions((prev) => {
+                        if (prev.some(t => t.id === txId)) return prev;
+                        const formatted = {
+                            id: txId,
+                            tokenAddress: selectedToken.address,
+                            type: tx.type === "buy" ? "매수" : "매도",
+                            amount: tx.token_amount,
+                            bnbValue: tx.bnb_value,
+                            timestamp: txTime.getTime(),
+                        };
+                        return [formatted, ...prev.slice(0, 99)];
+                    });
+
+                    setChartData((prev) => {
+                        if (!tx.updatedCandle) {
+                            console.warn("updatedCandle 데이터 누락:", tx);
+                            return prev;
+                        }
+
+                        const { time, open, high, low, close, raised_funds, volume } = tx.updatedCandle;
+                        if (isNaN(close) || isNaN(raised_funds)) {
+                            console.error("유효하지 않은 updatedCandle 데이터:", tx.updatedCandle);
+                            return prev;
+                        }
+
+                        const candleTime = new Date(time * 1000);
+                        console.log(`Updating chartData: time=${time}, date=${candleTime.toISOString()}, open=${open}, close=${close}, raised_funds=${raised_funds}, bnb_value=${tx.bnb_value}`);
+
+                        const newChartData = [...prev];
+                        const lastCandleIndex = newChartData.findIndex(c => c.time === time);
+
+                        if (lastCandleIndex >= 0) {
+                            newChartData[lastCandleIndex] = {
+                                time,
+                                open,
+                                high,
+                                low,
+                                close,
+                                raised_funds,
+                                volume
+                            };
+                        } else {
+                            newChartData.push({
+                                time,
+                                open,
+                                high,
+                                low,
+                                close,
+                                raised_funds,
+                                volume
+                            });
+                        }
+
+                        console.log("Updated chartData:", newChartData);
+                        return newChartData;
+                    });
+                };
+
+                socket.on("latestCandle", handleLatestCandle);
+                socket.on("newTransaction", handleNewTransaction);
+
+                // 주기적 데이터 검증 (10초마다)
+                const pollingInterval = setInterval(() => {
+                    fetchChartData();
+                }, 10000);
+
+                return () => {
+                    socket.off("connect");
+                    socket.off("disconnect");
+                    socket.off("newToken");
+                    socket.off("updateToken");
+                    socket.off("latestCandle", handleLatestCandle);
+                    socket.off("newTransaction", handleNewTransaction);
+                    clearInterval(pollingInterval);
+                    socketInitialized.current = false;
+                };
+            }
+        }
+    }, [selectedToken, interval]);
 
     useEffect(() => {
         const connectWallet = async () => {
@@ -308,7 +275,6 @@ function App() {
                 if (window.ethereum) {
                     const newProvider = new ethers.providers.Web3Provider(window.ethereum);
                     setProvider(newProvider);
-
                     const accounts = await newProvider.send("eth_requestAccounts", []);
                     setAccount(accounts[0]);
                     setSigner(newProvider.getSigner());
@@ -341,9 +307,14 @@ function App() {
         <div className="min-h-screen bg-gray-900 text-white flex">
             <div className="w-3/4 p-4">
                 <div className="bg-gray-800 p-4 rounded-lg shadow-lg">
-                    <h2 className="text-xl font-bold text-blue-400 mb-2">프리세일 모금액 차트</h2>
+                    <h2 className="text-xl font-bold text-blue-400 mb-2">프리세일 총 모금액 차트</h2>
                     {selectedToken ? (
-                        <FundingChart chartData={chartData} />
+                        <FundingChart
+                            chartData={chartData}
+                            interval={interval}
+                            setInterval={setChartInterval}
+                            selectedToken={selectedToken}    // ← 반드시 전달
+                        />
                     ) : (
                         <p className="text-gray-400">토큰을 선택하세요.</p>
                     )}
@@ -354,7 +325,7 @@ function App() {
                         loadingTransactions ? (
                             <p className="text-gray-400">트랜잭션 로딩 중...</p>
                         ) : (
-                            <TransactionList tokenAddress={selectedToken.address} />
+                            <TransactionList tokenAddress={selectedToken.address} transactions={transactions} />
                         )
                     ) : (
                         <p className="text-gray-400">토큰을 선택하세요.</p>
