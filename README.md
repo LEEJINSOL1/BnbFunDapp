@@ -113,7 +113,8 @@ UI 라이브러리: Tailwind CSS + shadcn/ui
 
 
 2025.5.27. : 토큰생성시 이미지 IPFS에저장 / MYSQL tokens 테이블에 IMG_URL 추가 /  토큰생성시 DB에 저장하고 프론트앤드(화면)에표시 
-* TO DO LIST
+
+# TO DO LIST
   
   ✅. 토큰리스트에도 토큰이미지 표시 -> 구현완료 (2025-05-27  2038)
   
@@ -125,10 +126,20 @@ UI 라이브러리: Tailwind CSS + shadcn/ui
  
   * 토큰주소, 발행자지갑주소 복사기능 추가구현완료(2025 0528 0300)
   
-  ✅. 토큰 별 댓글기능 구현 (2025-05-27  2038)
+  ✅. 토큰 별 댓글기능 구현 (2025-05-27  2038))
+  
+  ✅. 프로젝트 영어화/ CreatedAt 데이터 폼 변경 (2025-05-28- 1704)
 
+ 
   ✅. Fundingchart 폼 우측상단 정보탭 추가
   
   * 정보탭은 토큰주소, 발행지갑, 유통량, 웹사이트주서, 트위터 등 정보를 표시(2025 0528 00:02)
+
+#이슈
+
+1. TokenList.js : CreatedAT = NaN.NaN.NaN 으로 바뀜,
+   * 매수/매도 후 fetchTokens() 를 통해 서버에서 받아온 created_at 문자열을 new Date() 로 파싱할 때 타임존 정보가 빠져 있어서 Invalid Date 가 되고, .toLocaleString() 호출 시 전부 NaN 이 되는 현상입
+
+1. 해결 서버에서 ISO 8601 "YYYY-MM-DDTHH:mm:ssZ" 형태로 created_at 을 내려주도록 고치기
 
  
