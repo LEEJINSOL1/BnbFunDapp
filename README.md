@@ -137,9 +137,10 @@ UI 라이브러리: Tailwind CSS + shadcn/ui
 
 #이슈
 
-1. TokenList.js : CreatedAT = NaN.NaN.NaN 으로 바뀜,
+1. TokenList.js : 매수/매도를 하게되면 모든 토큰의 CreatedAT = NaN.NaN.NaN 으로 바뀜,
    * 매수/매도 후 fetchTokens() 를 통해 서버에서 받아온 created_at 문자열을 new Date() 로 파싱할 때 타임존 정보가 빠져 있어서 Invalid Date 가 되고, .toLocaleString() 호출 시 전부 NaN 이 되는 현상입
 
-1. 해결 서버에서 ISO 8601 "YYYY-MM-DDTHH:mm:ssZ" 형태로 created_at 을 내려주도록 고치기
+
+1. 해결 -> 서버에서 ISO 8601 "YYYY-MM-DDTHH:mm:ssZ" 형태로 created_at 을 내려주도록 고치기
 
  
